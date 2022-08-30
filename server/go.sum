@@ -1,0 +1,10 @@
+github.com/darm1609/FileServer_Messages_Golang v0.0.0-20220830045047-db3a93d37bdd h1:zr/mgkMBLwpSfEF4UkDInyPOme8FPHjW9QoBcCyTEHY=
+github.com/darm1609/FileServer_Messages_Golang v0.0.0-20220830045047-db3a93d37bdd/go.mod h1:5M8T0vVZmJKT4v3TRmLy5vPKVOOyik4Cu2onrii1vmE=
+github.com/darm1609/FileServer_Messages_Golang v0.0.0-20220830052243-6b4dde58f7d7 h1:F4jcXSStex7B0lYD3u6uV3P2wWDOfsCebvLqpdNv70E=
+github.com/darm1609/FileServer_Messages_Golang v0.0.0-20220830052243-6b4dde58f7d7/go.mod h1:5M8T0vVZmJKT4v3TRmLy5vPKVOOyik4Cu2onrii1vmE=
+github.com/darm1609/FileServer_Messages_Golang v1.0.0 h1:/EOoX2akTzw7A+X7TNNjOzyuBgad/qQ2SMYVC/ve294=
+github.com/darm1609/FileServer_Messages_Golang v1.0.0/go.mod h1:5M8T0vVZmJKT4v3TRmLy5vPKVOOyik4Cu2onrii1vmE=
+github.com/darm1609/FileServer_Messages_Golang v1.0.1 h1:gVPQHMbHaXmvzNiSTynEBMNML+97DLE4/Ha9utIP6WE=
+github.com/darm1609/FileServer_Messages_Golang v1.0.1/go.mod h1:5M8T0vVZmJKT4v3TRmLy5vPKVOOyik4Cu2onrii1vmE=
+github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
+github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
