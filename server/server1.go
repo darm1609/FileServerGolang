@@ -19,10 +19,12 @@ type Channel struct {
 }
 
 type Clients struct {
-	Client  net.Conn
-	Channel Channel
-	Mode    string
-	Active  bool
+	Client      net.Conn
+	Channel     Channel
+	Mode        string
+	Active      bool
+	ReceiveFile int
+	SendFile    int
 }
 
 var clientList = []Clients{}
@@ -226,6 +228,7 @@ func SendFileToAllClientsOnChannel(conn net.Conn, file string, formato string, m
 	for index := range clientList {
 		if clientList[index].Client == conn {
 			channel = clientList[index].Channel
+			clientList[index].SendFile++
 		}
 	}
 	for index := range clientList {
@@ -234,6 +237,7 @@ func SendFileToAllClientsOnChannel(conn net.Conn, file string, formato string, m
 			clientList[index].Active {
 			SendMessageToClient("send"+formato+"*"+file+"\n", clientList[index].Client)
 			send = true
+			clientList[index].ReceiveFile++
 		}
 	}
 	return send

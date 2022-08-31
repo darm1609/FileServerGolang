@@ -50,7 +50,6 @@ func FileToString(paramFilepath string) (string, error) {
 	paramFilepath = AdjustFilePath(paramFilepath)
 
 	dat, err := ioutil.ReadFile(paramFilepath)
-
 	if err != nil {
 		return "", err
 	}
@@ -80,14 +79,17 @@ func SendFile(text string, maxSize int) (string, error) {
 			if err != nil {
 				return "send", err
 			}
+
 			err = ValidFileSize(param, maxSize)
 			if err != nil {
 				return "send", err
 			}
+
 			fileString, err := FileToString(param)
 			if err != nil {
 				return "send", err
 			}
+
 			return "send " + fileString, nil
 		}
 	}
