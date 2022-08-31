@@ -46,7 +46,6 @@ func AdjustFilePath(filepath string) string {
 }
 
 func FileToString(paramFilepath string) (string, error) {
-
 	paramFilepath = AdjustFilePath(paramFilepath)
 
 	dat, err := ioutil.ReadFile(paramFilepath)
@@ -72,28 +71,41 @@ func ValidFileSize(filepath string, maxSize int) error {
 }
 
 func SendFile(text string, maxSize int) (string, error) {
-	if strings.Contains(text, "send") {
-		strArray := strings.Split(text, " ")
-		if len(strArray) > 1 {
-			_, param, err := ValidCommand(text)
-			if err != nil {
-				return "send", err
-			}
+	strArray := strings.Split(text, " ")
+	if len(strArray) > 1 {
+		_, param, err := ValidCommand(text)
+		if err != nil {
+			return "send", err
+		}
 
-			err = ValidFileSize(param, maxSize)
-			if err != nil {
-				return "send", err
-			}
+		err = ValidFileSize(param, maxSize)
+		if err != nil {
+			return "send", err
+		}
 
-			fileString, err := FileToString(param)
-			if err != nil {
-				return "send", err
-			}
+		fileString, err := FileToString(param)
+		if err != nil {
+			return "send", err
+		}
 
-			return "send " + fileString, nil
+		return "send " + fileString, nil
+	}
+	return "send", nil
+}
+
+func GetInitMessagesFromServer(conn net.Conn) {
+	serverReader := bufio.NewReader(conn)
+	for {
+		serverResponse, err := serverReader.ReadString('\n')
+		if err != nil {
+			log.Fatalln(err)
+		}
+		msjFromServer := strings.TrimSpace(serverResponse)
+		log.Println(msjFromServer)
+		if msjFromServer == msjObj.Message("HOST_HEAD_Close") {
+			break
 		}
 	}
-	return text, nil
 }
 
 func main() {
@@ -105,18 +117,7 @@ func main() {
 
 	conn, _ := net.Dial("tcp", "localhost:4040")
 
-	serverReader := bufio.NewReader(conn)
-
-	for {
-		serverResponse, err := serverReader.ReadString('\n')
-		if err != nil {
-			log.Fatalln(err)
-		}
-		log.Println(strings.TrimSpace(serverResponse))
-		if strings.TrimSpace(serverResponse) == msjObj.Message("HOST_HEAD_Close") {
-			break
-		}
-	}
+	GetInitMessagesFromServer(conn)
 
 	for {
 		// read in input from stdin
@@ -129,10 +130,12 @@ func main() {
 		}
 
 		//Validar send file
-		text, err = SendFile(text, maxSize)
-		if err != nil {
-			log.Println(err.Error())
-			continue
+		if strings.Contains(text, "send") {
+			text, err = SendFile(text, maxSize)
+			if err != nil {
+				log.Println(err.Error())
+				continue
+			}
 		}
 
 		// send to socket
