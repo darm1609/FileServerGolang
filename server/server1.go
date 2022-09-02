@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ type Channel struct {
 
 type Clients struct {
 	Client      net.Conn
+	ClientName  string
 	Channel     Channel
 	Mode        string
 	Active      bool
@@ -35,7 +37,10 @@ var messages = FileServer_Messages_Golang.Messages{}
 var destinyPath = "box/"
 
 func ExportStat(rw http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(rw, clientList)
+	rw.Header().Set("Access-Control-Allow-Origin", "*")
+	rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	json.NewEncoder(rw).Encode(clientList)
+	//fmt.Fprintln(rw, clientList)
 }
 
 func main() {
@@ -48,7 +53,7 @@ func main() {
 	flag.Parse()
 
 	mux := mux.NewRouter()
-	mux.HandleFunc("/api/FileServer/", ExportStat).Methods("GET")
+	mux.HandleFunc("/api/FileServer/", ExportStat).Methods("GET", "OPTIONS")
 
 	// validate supported network protocols
 	switch network {
@@ -92,7 +97,7 @@ func main() {
 }
 
 func RegisterConnectedClient(conn net.Conn) {
-	client := Clients{Client: conn, Active: true}
+	client := Clients{Client: conn, ClientName: conn.RemoteAddr().String(), Active: true}
 	clientList = append(clientList, client)
 }
 
