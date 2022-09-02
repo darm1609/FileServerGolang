@@ -7,11 +7,13 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/darm1609/FileServer_Messages_Golang"
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 )
 
 type Channel struct {
@@ -32,12 +34,21 @@ var channelList = []Channel{}
 var messages = FileServer_Messages_Golang.Messages{}
 var destinyPath = "box/"
 
+func ExportStat(rw http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(rw, clientList)
+}
+
 func main() {
 	var addr string
 	var network string
-	flag.StringVar(&addr, "e", ":4040", "service endpoint [ip addr or socket path]")
+	var tcpPort = "4040"
+	var httpPort = "8080"
+	flag.StringVar(&addr, "e", ":"+tcpPort, "service endpoint [ip addr or socket path]")
 	flag.StringVar(&network, "n", "tcp", "network protocol [tcp,unix]")
 	flag.Parse()
+
+	mux := mux.NewRouter()
+	mux.HandleFunc("/api/FileServer/", ExportStat).Methods("GET")
 
 	// validate supported network protocols
 	switch network {
@@ -57,6 +68,8 @@ func main() {
 
 	CreateChannels("1", "2")
 
+	go http.ListenAndServe(":"+httpPort, mux)
+
 	// connection-loop - handle incoming requests
 	for {
 		conn, err := ln.Accept()
@@ -74,6 +87,7 @@ func main() {
 		log.Println(messages.Message("HOST_HEAD_Connected_to"), conn.RemoteAddr())
 
 		go HandleConnection(conn)
+
 	}
 }
 
@@ -356,6 +370,8 @@ func HandleConnection(conn net.Conn) {
 			conn.Close()
 			continue
 		}
+
+		log.Println(string(data[:n]))
 
 		command, param, err := ReadCommandAndParam(data, n)
 
