@@ -376,8 +376,6 @@ func HandleConnection(conn net.Conn) {
 			continue
 		}
 
-		log.Println(string(data[:n]))
-
 		command, param, err := ReadCommandAndParam(data, n)
 
 		if command == "q" {
