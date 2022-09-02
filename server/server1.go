@@ -18,7 +18,7 @@ import (
 )
 
 type Channel struct {
-	Nombre string
+	Name string
 }
 
 type Clients struct {
@@ -103,7 +103,7 @@ func RegisterConnectedClient(conn net.Conn) {
 
 func CreateChannels(channels ...string) {
 	for _, elem := range channels {
-		channel := Channel{Nombre: elem}
+		channel := Channel{Name: elem}
 		channelList = append(channelList, channel)
 	}
 }
@@ -208,7 +208,7 @@ func EstablishClientMode(conn net.Conn, mode string) bool {
 
 func IsConnectedToAChannel(conn net.Conn) error {
 	for index := range clientList {
-		if clientList[index].Client == conn && len(clientList[index].Channel.Nombre) > 0 {
+		if clientList[index].Client == conn && len(clientList[index].Channel.Name) > 0 {
 			return nil
 		}
 	}
@@ -232,7 +232,7 @@ func ExistClientInModeReceiveOnChannel(conn net.Conn, modeReceive string) error 
 		}
 	}
 	for index := range clientList {
-		if clientList[index].Channel.Nombre == channel.Nombre &&
+		if clientList[index].Channel.Name == channel.Name &&
 			clientList[index].Mode == modeReceive &&
 			clientList[index].Active {
 			return nil
@@ -251,7 +251,7 @@ func SendFileToAllClientsOnChannel(conn net.Conn, file string, formato string, m
 		}
 	}
 	for index := range clientList {
-		if clientList[index].Channel.Nombre == channel.Nombre &&
+		if clientList[index].Channel.Name == channel.Name &&
 			clientList[index].Mode == modeReceive &&
 			clientList[index].Active {
 			SendMessageToClient("send"+formato+"*"+file+"\n", clientList[index].Client)
@@ -264,7 +264,7 @@ func SendFileToAllClientsOnChannel(conn net.Conn, file string, formato string, m
 
 func ValidIfSuscribe(conn net.Conn) bool {
 	for index := range clientList {
-		if len(clientList[index].Channel.Nombre) > 0 {
+		if len(clientList[index].Channel.Name) > 0 {
 			return true
 		}
 	}
@@ -281,7 +281,7 @@ func SetToInactiveClient(conn net.Conn) {
 
 func SuscribeToChannel(conn net.Conn, param string) {
 	for _, channel := range channelList {
-		if channel.Nombre == param {
+		if channel.Name == param {
 			SendMessageToClient(messages.Message("HOST_CLIENT_Subscribe_To_Channel"), conn)
 			SuscribeClientToChannel(conn, channel)
 			return
@@ -340,7 +340,7 @@ func ProcessFile(conn net.Conn, param string, receiveMode string) {
 func CreateSuscribeInitMessage() string {
 	var msj string = "suscribe <"
 	for _, channel := range channelList {
-		msj = msj + channel.Nombre + ", "
+		msj = msj + channel.Name + ", "
 	}
 	msj = msj[:strings.LastIndex(msj, ",")]
 	return msj + ">"
