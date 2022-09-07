@@ -36,13 +36,6 @@ var channelList = []Channel{}
 var messages = FileServer_Messages_Golang.Messages{}
 var destinyPath = "box/"
 
-func ExportStat(rw http.ResponseWriter, r *http.Request) {
-	rw.Header().Set("Access-Control-Allow-Origin", "*")
-	rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	json.NewEncoder(rw).Encode(clientList)
-	//fmt.Fprintln(rw, clientList)
-}
-
 func main() {
 	var addr string
 	var network string
@@ -52,17 +45,21 @@ func main() {
 	flag.StringVar(&network, "n", "tcp", "network protocol [tcp,unix]")
 	flag.Parse()
 
+	//Enpoint para API
 	mux := mux.NewRouter()
 	mux.HandleFunc("/api/FileServer/", ExportStat).Methods("GET", "OPTIONS")
 
-	// validate supported network protocols
+	// Crear listenner HTTP para API
+	go http.ListenAndServe(":"+httpPort, mux)
+
+	// Validar protocolos soportados
 	switch network {
 	case "tcp", "tcp4", "tcp6", "unix":
 	default:
 		log.Fatalln(messages.Message("HOST_HEAD_Unsoported"), network)
 	}
 
-	// create a listener for provided network and host address
+	// Crear listener TCP
 	ln, err := net.Listen(network, addr)
 	if err != nil {
 		log.Fatal(messages.Message("HOST_HEAD_failed_create_listener"), err)
@@ -71,9 +68,8 @@ func main() {
 	log.Println(messages.Message("HOST_HEAD_FileServer"))
 	log.Printf(messages.Message("HOST_HEAD_ServiceStart")+" (%s) %s\n", network, addr)
 
+	//Crear canales disponibles
 	CreateChannels("1", "2")
-
-	go http.ListenAndServe(":"+httpPort, mux)
 
 	// connection-loop - handle incoming requests
 	for {
@@ -94,6 +90,12 @@ func main() {
 		go HandleConnection(conn)
 
 	}
+}
+
+func ExportStat(rw http.ResponseWriter, r *http.Request) {
+	rw.Header().Set("Access-Control-Allow-Origin", "*")
+	rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	json.NewEncoder(rw).Encode(clientList)
 }
 
 func RegisterConnectedClient(conn net.Conn) {
@@ -346,9 +348,18 @@ func CreateSuscribeInitMessage() string {
 	return msj + ">"
 }
 
+func SendInfoAndWelcomeMsjToClient(conn net.Conn) error {
+	_, err := conn.Write([]byte("Connected...\nUsage:\n" +
+		CreateSuscribeInitMessage() +
+		"\nmode <S: Send, R: Receive>\nsend filepath\n" +
+		messages.Message("HOST_HEAD_Close") + "\n"))
+	return err
+}
+
 func HandleConnection(conn net.Conn) {
 	const sendMode = "S"
 	const receiveMode = "R"
+
 	maxSize, err := strconv.Atoi(messages.Message("MAX_FILESIZE"))
 	if err != nil {
 		log.Println(messages.Message("HOST_Error_Convert_Max_FileSize"), err)
@@ -358,10 +369,9 @@ func HandleConnection(conn net.Conn) {
 	modes["S"] = messages.Message("HOST_GENERAL_Send")
 	modes["R"] = messages.Message("HOST_GENERAL_Receive")
 
-	if _, err := conn.Write([]byte("Connected...\nUsage:\n" +
-		CreateSuscribeInitMessage() +
-		"\nmode <S: Send, R: Receive>\nsend filepath\n" +
-		messages.Message("HOST_HEAD_Close") + "\n")); err != nil {
+	err = SendInfoAndWelcomeMsjToClient(conn)
+
+	if err != nil {
 		log.Println(messages.Message("HOST_CLIENT_Error_Writing"), err)
 		return
 	}
