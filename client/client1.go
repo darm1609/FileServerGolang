@@ -17,8 +17,37 @@ import (
 
 var msjObj = FileServer_Messages_Golang.Messages{}
 var destinyPath = "box/"
+var tcpPort = "4040"
 
-func ValidCommand(s string) (string, string, error) {
+func ConnectToServer() net.Conn {
+	conn, _ := net.Dial("tcp", "localhost:"+tcpPort)
+	return conn
+}
+
+func ReadInput() (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print(msjObj.Message("GUEST_GENERAL_Text_To_Send"))
+	text, err := reader.ReadString('\n')
+	return text, err
+}
+
+func SendCommandToServerAndObtainRequest(conn net.Conn, command string) string {
+	// send to socket
+	conn.Write([]byte(string(command)))
+
+	// listen for reply
+	message, _ := bufio.NewReader(conn).ReadString('\n')
+	message = strings.TrimSuffix(strings.Trim(message, " "), "\n")
+	message = strings.TrimSuffix(message, "\r")
+
+	return message
+}
+
+func ShowMessageFromServer(message string) {
+	fmt.Print(msjObj.Message("GUEST_GENERAL_Mjs_Form_Server") + message + "\n")
+}
+
+func ExtratCommand(s string) (string, string, error) {
 	strArray := strings.Split(s, " ")
 	if len(strArray) >= 1 {
 		var valid bool = false
@@ -73,7 +102,7 @@ func ValidFileSize(filepath string, maxSize int) error {
 func SendFile(text string, maxSize int) (string, error) {
 	strArray := strings.Split(text, " ")
 	if len(strArray) > 1 {
-		_, param, err := ValidCommand(text)
+		_, param, err := ExtratCommand(text)
 		if err != nil {
 			return "send", err
 		}
@@ -108,72 +137,86 @@ func GetInitMessagesFromServer(conn net.Conn) {
 	}
 }
 
-func main() {
+func ClientIsInModeReceive(message string) bool {
+	if strings.Contains(message, msjObj.Message("HOST_CLIENT_Client_In_Mode")) &&
+		strings.Contains(message, msjObj.Message("HOST_GENERAL_Receive")) {
+		return true
+	}
+	return false
+}
 
+func WaitAndReadIncomingData(conn net.Conn, maxSize int) ([]byte, int, error) {
+	data := make([]byte, maxSize)
+	n, err := conn.Read(data)
+	return data, n, err
+}
+
+func ExtratFileAndFormat(data []byte, n int) (string, string) {
+	str := string(data[:n])
+	str = strings.TrimSuffix(strings.Trim(str, " "), "\n")
+	str = strings.TrimSuffix(str, "\r")
+	format := strings.Split(str, "*")[0]
+	format = strings.Replace(format, "send", "", 1)
+	file := strings.Replace(str, "send"+format+"*", "", 1)
+	return format, file
+}
+
+func SaveFileReceive(file string, format string) {
+	newUUID := uuid.New()
+	dataFile := []byte(string(file))
+	filepath := destinyPath + newUUID.String() + "." + format
+	ioutil.WriteFile(filepath, dataFile, 0644)
+	log.Println(msjObj.Message("GUEST_GENERAL_File_Is_Received") + newUUID.String() + "." + format)
+}
+
+func ValidCommand(incomingStr string, command string) bool {
+	return strings.Contains(incomingStr, command)
+}
+
+func main() {
 	maxSize, err := strconv.Atoi(msjObj.Message("MAX_FILESIZE"))
 	if err != nil {
 		log.Println(msjObj.Message("HOST_Error_Convert_Max_FileSize"), err)
 	}
 
-	conn, _ := net.Dial("tcp", "localhost:4040")
+	conn := ConnectToServer()
 
 	GetInitMessagesFromServer(conn)
 
 	for {
-		// read in input from stdin
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print(msjObj.Message("GUEST_GENERAL_Text_To_Send"))
-		text, err := reader.ReadString('\n')
+		command, err := ReadInput()
 		if err != nil {
 			log.Println(err.Error())
 			continue
 		}
 
-		//Validar send file
-		if strings.Contains(text, "send") {
-			text, err = SendFile(text, maxSize)
+		if ValidCommand(command, "send") {
+			command, err = SendFile(command, maxSize)
 			if err != nil {
 				log.Println(err.Error())
 				continue
 			}
 		}
 
-		// send to socket
-		conn.Write([]byte(string(text)))
-
-		// listen for reply
-		message, _ := bufio.NewReader(conn).ReadString('\n')
-		message = strings.TrimSuffix(strings.Trim(message, " "), "\n")
-		message = strings.TrimSuffix(message, "\r")
-
+		message := SendCommandToServerAndObtainRequest(conn, command)
 		if message == msjObj.Message("HOST_CLIENT_Goodbye") {
 			conn.Close()
 			break
 		}
 
-		fmt.Print(msjObj.Message("GUEST_GENERAL_Mjs_Form_Server") + message + "\n")
+		ShowMessageFromServer(message)
 
-		if strings.Contains(message, msjObj.Message("HOST_CLIENT_Client_In_Mode")) &&
-			strings.Contains(message, msjObj.Message("HOST_GENERAL_Receive")) {
+		if ClientIsInModeReceive(message) {
 			for {
-				data := make([]byte, maxSize)
-				n, err := conn.Read(data)
+				data, n, err := WaitAndReadIncomingData(conn, maxSize)
 				if err != nil {
 					fmt.Println(msjObj.Message("GUEST_GENERAL_Error_In_Receive_Mode"))
 					break
 				}
-				s := string(data[:n])
-				s = strings.TrimSuffix(strings.Trim(s, " "), "\n")
-				s = strings.TrimSuffix(s, "\r")
 
-				format := strings.Split(s, "*")[0]
-				format = strings.Replace(format, "send", "", 1)
-				file := strings.Replace(s, "send"+format+"*", "", 1)
-				newUUID := uuid.New()
-				dataFile := []byte(string(file))
-				filepath := destinyPath + newUUID.String() + "." + format
-				ioutil.WriteFile(filepath, dataFile, 0644)
-				log.Println(msjObj.Message("GUEST_GENERAL_File_Is_Received") + newUUID.String() + "." + format)
+				format, file := ExtratFileAndFormat(data, n)
+
+				SaveFileReceive(file, format)
 			}
 		}
 	}
