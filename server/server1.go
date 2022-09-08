@@ -17,24 +17,204 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type Channel struct {
+var clientList = []Clients{}
+var channelList = []Channels{}
+var messages = FileServer_Messages_Golang.Messages{}
+var destinyPath = "box/"
+
+type Channels struct {
 	Name string
+}
+
+func (channel *Channels) CreateChannels(channels ...string) {
+	for _, elem := range channels {
+		channel := Channels{Name: elem}
+		channelList = append(channelList, channel)
+	}
 }
 
 type Clients struct {
 	Client      net.Conn
 	ClientName  string
-	Channel     Channel
+	Channel     Channels
 	Mode        string
 	Active      bool
 	ReceiveFile int
 	SendFile    int
 }
 
-var clientList = []Clients{}
-var channelList = []Channel{}
-var messages = FileServer_Messages_Golang.Messages{}
-var destinyPath = "box/"
+func (client *Clients) RegisterConnectedClient(conn net.Conn) {
+	client.Client = conn
+	client.ClientName = conn.RemoteAddr().String()
+	client.Active = true
+	clientList = append(clientList, *client)
+}
+
+func (client *Clients) SendInfoAndWelcomeMsjToClient() error {
+	_, err := client.Client.Write([]byte("Connected...\nUsage:\n" +
+		CreateSuscribeInitMessage() +
+		"\nmode <S: Send, R: Receive>\nsend filepath\n" +
+		messages.Message("HOST_HEAD_Close") + "\n"))
+	return err
+}
+
+func (client *Clients) SetToInactiveClient() {
+	for index := range clientList {
+		if clientList[index].Client == client.Client {
+			clientList[index].Active = false
+		}
+	}
+}
+
+func (client *Clients) SendMessageToClient(message string) {
+	var err error
+	msj := []string{message + "\n"}
+	_, err = client.Client.Write(StringArrayToByteArray(msj))
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (client *Clients) ProcessFile(param string, receiveMode string) {
+	var err error
+
+	err = client.IsConnectedToAChannel()
+	if err != nil {
+		client.SendMessageToClient(err.Error())
+		return
+	}
+
+	formato, param := ExtractFormatFromParam(param)
+
+	err = ReceiveFileInServer(param, formato)
+	if err != nil {
+		client.SendMessageToClient(messages.Message("HOST_CLIENT_Server_Failed_To_Receive"))
+		return
+	}
+
+	err = client.ExistClientInModeReceiveOnChannel(receiveMode)
+	if err != nil {
+		client.SendMessageToClient(err.Error())
+		return
+	}
+
+	if client.SendFileToAllClientsOnChannel(param, formato, receiveMode) {
+		client.SendMessageToClient(messages.Message("HOST_CLIENT_The_File_Was_Send"))
+	} else {
+		client.SendMessageToClient(messages.Message("HOST_CLIENT_Fail_To_Send_File"))
+	}
+}
+
+func (client *Clients) SetMode(modes map[string]string, param string) {
+	if client.ValidIfSuscribe() {
+		param = strings.ToUpper(param)
+		for index, mode := range modes {
+			if index == param {
+				if client.EstablishClientMode(index) {
+					client.SendMessageToClient(messages.Message("HOST_CLIENT_Client_In_Mode") + mode)
+					return
+				}
+			}
+		}
+		client.SendMessageToClient(messages.Message("HOST_CLIENT_Invalid_Mode"))
+		return
+	}
+	client.SendMessageToClient(messages.Message("HOST_CLIENT_Must_Subscribe_Before_Mode"))
+}
+
+func (client *Clients) SuscribeClientToChannel(channel Channels) {
+	for index := range clientList {
+		if clientList[index].Client == client.Client {
+			clientList[index].Channel = channel
+		}
+	}
+}
+
+func (client *Clients) SuscribeToChannel(param string) {
+	for _, channel := range channelList {
+		if channel.Name == param {
+			client.SendMessageToClient(messages.Message("HOST_CLIENT_Subscribe_To_Channel"))
+			client.SuscribeClientToChannel(channel)
+			return
+		}
+	}
+	client.SendMessageToClient(messages.Message("HOST_CLIENT_Channel_Not_Exist"))
+}
+
+func (client *Clients) SendFileToAllClientsOnChannel(file string, formato string, modeReceive string) bool {
+	var channel Channels
+	var send bool = false
+	for index := range clientList {
+		if clientList[index].Client == client.Client {
+			channel = clientList[index].Channel
+			clientList[index].SendFile++
+		}
+	}
+	for index := range clientList {
+		if clientList[index].Channel.Name == channel.Name &&
+			clientList[index].Mode == modeReceive &&
+			clientList[index].Active {
+			clientList[index].SendMessageToClient("send" + formato + "*" + file + "\n")
+			send = true
+			clientList[index].ReceiveFile++
+		}
+	}
+	return send
+}
+
+func (client *Clients) EstablishClientMode(mode string) bool {
+	for index := range clientList {
+		if clientList[index].Client == client.Client {
+			clientList[index].Mode = mode
+			return true
+		}
+	}
+	return false
+}
+
+func (client *Clients) ValidIfSuscribe() bool {
+	for index := range clientList {
+		if len(clientList[index].Channel.Name) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (client *Clients) IsConnectedToAChannel() error {
+	for index := range clientList {
+		if clientList[index].Client == client.Client && len(clientList[index].Channel.Name) > 0 {
+			return nil
+		}
+	}
+	return errors.New(messages.Message("HOST_CLIENT_Must_Subscribe"))
+}
+
+func (client *Clients) IsInModeSend(modeSend string) bool {
+	for index := range clientList {
+		if clientList[index].Client == client.Client && clientList[index].Mode == modeSend {
+			return true
+		}
+	}
+	return false
+}
+
+func (client *Clients) ExistClientInModeReceiveOnChannel(modeReceive string) error {
+	var channel Channels
+	for index := range clientList {
+		if clientList[index].Client == client.Client {
+			channel = clientList[index].Channel
+		}
+	}
+	for index := range clientList {
+		if clientList[index].Channel.Name == channel.Name &&
+			clientList[index].Mode == modeReceive &&
+			clientList[index].Active {
+			return nil
+		}
+	}
+	return errors.New(messages.Message("HOST_CLIENT_No_Client_On_Channel"))
+}
 
 func main() {
 	var addr string
@@ -49,7 +229,7 @@ func main() {
 	mux := mux.NewRouter()
 	mux.HandleFunc("/api/FileServer/", ExportStat).Methods("GET", "OPTIONS")
 
-	// Crear listenner HTTP para API
+	// Crear listenner HTTP para API, concurrente
 	go http.ListenAndServe(":"+httpPort, mux)
 
 	// Validar protocolos soportados
@@ -69,7 +249,8 @@ func main() {
 	log.Printf(messages.Message("HOST_HEAD_ServiceStart")+" (%s) %s\n", network, addr)
 
 	//Crear canales disponibles
-	CreateChannels("1", "2")
+	channel := Channels{}
+	channel.CreateChannels("1", "2")
 
 	// connection-loop - handle incoming requests
 	for {
@@ -83,11 +264,13 @@ func main() {
 			continue
 		}
 
-		RegisterConnectedClient(conn)
+		client := Clients{}
+		client.RegisterConnectedClient(conn)
 
 		log.Println(messages.Message("HOST_HEAD_Connected_to"), conn.RemoteAddr())
 
-		go HandleConnection(conn)
+		//Manejador de conexion concurrente
+		go HandleConnection(client, conn)
 
 	}
 }
@@ -96,18 +279,6 @@ func ExportStat(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Access-Control-Allow-Origin", "*")
 	rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	json.NewEncoder(rw).Encode(clientList)
-}
-
-func RegisterConnectedClient(conn net.Conn) {
-	client := Clients{Client: conn, ClientName: conn.RemoteAddr().String(), Active: true}
-	clientList = append(clientList, client)
-}
-
-func CreateChannels(channels ...string) {
-	for _, elem := range channels {
-		channel := Channel{Name: elem}
-		channelList = append(channelList, channel)
-	}
 }
 
 func StringArrayToByteArray(str []string) []byte {
@@ -119,15 +290,6 @@ func StringArrayToByteArray(str []string) []byte {
 		}
 	}
 	return x
-}
-
-func SendMessageToClient(message string, conn net.Conn) {
-	var err error
-	msj := []string{message + "\n"}
-	_, err = conn.Write(StringArrayToByteArray(msj))
-	if err != nil {
-		panic(err)
-	}
 }
 
 func ValidCommand(s string) (string, string, error) {
@@ -190,155 +352,6 @@ func ReceiveFileInServer(param, formato string) error {
 	return err
 }
 
-func SuscribeClientToChannel(conn net.Conn, channel Channel) {
-	for index := range clientList {
-		if clientList[index].Client == conn {
-			clientList[index].Channel = channel
-		}
-	}
-}
-
-func EstablishClientMode(conn net.Conn, mode string) bool {
-	for index := range clientList {
-		if clientList[index].Client == conn {
-			clientList[index].Mode = mode
-			return true
-		}
-	}
-	return false
-}
-
-func IsConnectedToAChannel(conn net.Conn) error {
-	for index := range clientList {
-		if clientList[index].Client == conn && len(clientList[index].Channel.Name) > 0 {
-			return nil
-		}
-	}
-	return errors.New(messages.Message("HOST_CLIENT_Must_Subscribe"))
-}
-
-func IsInModeSend(conn net.Conn, modeSend string) bool {
-	for index := range clientList {
-		if clientList[index].Client == conn && clientList[index].Mode == modeSend {
-			return true
-		}
-	}
-	return false
-}
-
-func ExistClientInModeReceiveOnChannel(conn net.Conn, modeReceive string) error {
-	var channel Channel
-	for index := range clientList {
-		if clientList[index].Client == conn {
-			channel = clientList[index].Channel
-		}
-	}
-	for index := range clientList {
-		if clientList[index].Channel.Name == channel.Name &&
-			clientList[index].Mode == modeReceive &&
-			clientList[index].Active {
-			return nil
-		}
-	}
-	return errors.New(messages.Message("HOST_CLIENT_No_Client_On_Channel"))
-}
-
-func SendFileToAllClientsOnChannel(conn net.Conn, file string, formato string, modeReceive string) bool {
-	var channel Channel
-	var send bool = false
-	for index := range clientList {
-		if clientList[index].Client == conn {
-			channel = clientList[index].Channel
-			clientList[index].SendFile++
-		}
-	}
-	for index := range clientList {
-		if clientList[index].Channel.Name == channel.Name &&
-			clientList[index].Mode == modeReceive &&
-			clientList[index].Active {
-			SendMessageToClient("send"+formato+"*"+file+"\n", clientList[index].Client)
-			send = true
-			clientList[index].ReceiveFile++
-		}
-	}
-	return send
-}
-
-func ValidIfSuscribe(conn net.Conn) bool {
-	for index := range clientList {
-		if len(clientList[index].Channel.Name) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func SetToInactiveClient(conn net.Conn) {
-	for index := range clientList {
-		if clientList[index].Client == conn {
-			clientList[index].Active = false
-		}
-	}
-}
-
-func SuscribeToChannel(conn net.Conn, param string) {
-	for _, channel := range channelList {
-		if channel.Name == param {
-			SendMessageToClient(messages.Message("HOST_CLIENT_Subscribe_To_Channel"), conn)
-			SuscribeClientToChannel(conn, channel)
-			return
-		}
-	}
-	SendMessageToClient(messages.Message("HOST_CLIENT_Channel_Not_Exist"), conn)
-}
-
-func SetMode(modes map[string]string, conn net.Conn, param string) {
-	if ValidIfSuscribe(conn) {
-		param = strings.ToUpper(param)
-		for i, mode := range modes {
-			if i == param {
-				if EstablishClientMode(conn, i) {
-					SendMessageToClient(messages.Message("HOST_CLIENT_Client_In_Mode")+mode, conn)
-					return
-				}
-			}
-		}
-		SendMessageToClient(messages.Message("HOST_CLIENT_Invalid_Mode"), conn)
-		return
-	}
-	SendMessageToClient(messages.Message("HOST_CLIENT_Must_Subscribe_Before_Mode"), conn)
-}
-
-func ProcessFile(conn net.Conn, param string, receiveMode string) {
-	var err error
-
-	err = IsConnectedToAChannel(conn)
-	if err != nil {
-		SendMessageToClient(err.Error(), conn)
-		return
-	}
-
-	formato, param := ExtractFormatFromParam(param)
-
-	err = ReceiveFileInServer(param, formato)
-	if err != nil {
-		SendMessageToClient(messages.Message("HOST_CLIENT_Server_Failed_To_Receive"), conn)
-		return
-	}
-
-	err = ExistClientInModeReceiveOnChannel(conn, receiveMode)
-	if err != nil {
-		SendMessageToClient(err.Error(), conn)
-		return
-	}
-
-	if SendFileToAllClientsOnChannel(conn, param, formato, receiveMode) {
-		SendMessageToClient(messages.Message("HOST_CLIENT_The_File_Was_Send"), conn)
-	} else {
-		SendMessageToClient(messages.Message("HOST_CLIENT_Fail_To_Send_File"), conn)
-	}
-}
-
 func CreateSuscribeInitMessage() string {
 	var msj string = "suscribe <"
 	for _, channel := range channelList {
@@ -348,15 +361,7 @@ func CreateSuscribeInitMessage() string {
 	return msj + ">"
 }
 
-func SendInfoAndWelcomeMsjToClient(conn net.Conn) error {
-	_, err := conn.Write([]byte("Connected...\nUsage:\n" +
-		CreateSuscribeInitMessage() +
-		"\nmode <S: Send, R: Receive>\nsend filepath\n" +
-		messages.Message("HOST_HEAD_Close") + "\n"))
-	return err
-}
-
-func HandleConnection(conn net.Conn) {
+func HandleConnection(client Clients, conn net.Conn) {
 	const sendMode = "S"
 	const receiveMode = "R"
 
@@ -369,7 +374,7 @@ func HandleConnection(conn net.Conn) {
 	modes["S"] = messages.Message("HOST_GENERAL_Send")
 	modes["R"] = messages.Message("HOST_GENERAL_Receive")
 
-	err = SendInfoAndWelcomeMsjToClient(conn)
+	err = client.SendInfoAndWelcomeMsjToClient()
 
 	if err != nil {
 		log.Println(messages.Message("HOST_CLIENT_Error_Writing"), err)
@@ -378,41 +383,41 @@ func HandleConnection(conn net.Conn) {
 
 	for {
 		data := make([]byte, maxSize)
-		n, err := conn.Read(data)
+		n, err := client.Client.Read(data)
 
 		if err != nil {
-			SetToInactiveClient(conn)
-			conn.Close()
+			client.SetToInactiveClient()
+			client.Client.Close()
 			continue
 		}
 
 		command, param, err := ReadCommandAndParam(data, n)
 
 		if command == "q" {
-			SendMessageToClient(messages.Message("HOST_CLIENT_Goodbye"), conn)
-			SetToInactiveClient(conn)
-			conn.Close()
+			client.SendMessageToClient(messages.Message("HOST_CLIENT_Goodbye"))
+			client.SetToInactiveClient()
+			client.Client.Close()
 			break
 		}
 
 		if err != nil {
-			SendMessageToClient(err.Error(), conn)
+			client.SendMessageToClient(err.Error())
 			continue
 		}
 
 		if command == "mode" {
-			SetMode(modes, conn, param)
+			client.SetMode(modes, param)
 		}
 
 		if command == "suscribe" {
-			SuscribeToChannel(conn, param)
+			client.SuscribeToChannel(param)
 		}
 
 		if command == "send" {
-			if IsInModeSend(conn, sendMode) {
-				ProcessFile(conn, param, receiveMode)
+			if client.IsInModeSend(sendMode) {
+				client.ProcessFile(param, receiveMode)
 			} else {
-				SendMessageToClient(messages.Message("HOST_CLIENT_Must_Set_Mode_Send")+messages.Message("HOST_GENERAL_Send"), conn)
+				client.SendMessageToClient(messages.Message("HOST_CLIENT_Must_Set_Mode_Send") + messages.Message("HOST_GENERAL_Send"))
 			}
 		}
 	}
