@@ -21,6 +21,8 @@ var clientList = []Clients{}
 var channelList = []Channels{}
 var messages = FileServer_Messages_Golang.Messages{}
 var destinyPath = "box/"
+var tcpPort = "4040"
+var httpPort = "8080"
 
 type Channels struct {
 	Name string
@@ -216,65 +218,6 @@ func (client *Clients) ExistClientInModeReceiveOnChannel(modeReceive string) err
 	return errors.New(messages.Message("HOST_CLIENT_No_Client_On_Channel"))
 }
 
-func main() {
-	var addr string
-	var network string
-	var tcpPort = "4040"
-	var httpPort = "8080"
-	flag.StringVar(&addr, "e", ":"+tcpPort, "service endpoint [ip addr or socket path]")
-	flag.StringVar(&network, "n", "tcp", "network protocol [tcp,unix]")
-	flag.Parse()
-
-	//Enpoint para API
-	mux := mux.NewRouter()
-	mux.HandleFunc("/api/FileServer/", ExportStat).Methods("GET", "OPTIONS")
-
-	// Crear listenner HTTP para API, concurrente
-	go http.ListenAndServe(":"+httpPort, mux)
-
-	// Validar protocolos soportados
-	switch network {
-	case "tcp", "tcp4", "tcp6", "unix":
-	default:
-		log.Fatalln(messages.Message("HOST_HEAD_Unsoported"), network)
-	}
-
-	// Crear listener TCP
-	ln, err := net.Listen(network, addr)
-	if err != nil {
-		log.Fatal(messages.Message("HOST_HEAD_failed_create_listener"), err)
-	}
-
-	log.Println(messages.Message("HOST_HEAD_FileServer"))
-	log.Printf(messages.Message("HOST_HEAD_ServiceStart")+" (%s) %s\n", network, addr)
-
-	//Crear canales disponibles
-	channel := Channels{}
-	channel.CreateChannels("1", "2")
-
-	// connection-loop - handle incoming requests
-	for {
-		conn, err := ln.Accept()
-
-		if err != nil {
-			fmt.Println(err)
-			if err := conn.Close(); err != nil {
-				log.Println(messages.Message("HOST_HEAD_failed_close_listener"), err)
-			}
-			continue
-		}
-
-		client := Clients{}
-		client.RegisterConnectedClient(conn)
-
-		log.Println(messages.Message("HOST_HEAD_Connected_to"), conn.RemoteAddr())
-
-		//Manejador de conexion concurrente
-		go HandleConnection(client, conn)
-
-	}
-}
-
 func ExportStat(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Access-Control-Allow-Origin", "*")
 	rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -420,5 +363,63 @@ func HandleConnection(client Clients, conn net.Conn) {
 				client.SendMessageToClient(messages.Message("HOST_CLIENT_Must_Set_Mode_Send") + messages.Message("HOST_GENERAL_Send"))
 			}
 		}
+	}
+}
+
+func main() {
+	var addr string
+	var network string
+
+	flag.StringVar(&addr, "e", ":"+tcpPort, "service endpoint [ip addr or socket path]")
+	flag.StringVar(&network, "n", "tcp", "network protocol [tcp,unix]")
+	flag.Parse()
+
+	//Enpoint para API
+	mux := mux.NewRouter()
+	mux.HandleFunc("/api/FileServer/", ExportStat).Methods("GET", "OPTIONS")
+
+	// Crear listenner HTTP para API, concurrente
+	go http.ListenAndServe(":"+httpPort, mux)
+
+	// Validar protocolos soportados
+	switch network {
+	case "tcp", "tcp4", "tcp6", "unix":
+	default:
+		log.Fatalln(messages.Message("HOST_HEAD_Unsoported"), network)
+	}
+
+	// Crear listener TCP
+	ln, err := net.Listen(network, addr)
+	if err != nil {
+		log.Fatal(messages.Message("HOST_HEAD_failed_create_listener"), err)
+	}
+
+	log.Println(messages.Message("HOST_HEAD_FileServer"))
+	log.Printf(messages.Message("HOST_HEAD_ServiceStart")+" (%s) %s\n", network, addr)
+
+	//Crear canales disponibles
+	channel := Channels{}
+	channel.CreateChannels("1", "2")
+
+	// connection-loop - handle incoming requests
+	for {
+		conn, err := ln.Accept()
+
+		if err != nil {
+			fmt.Println(err)
+			if err := conn.Close(); err != nil {
+				log.Println(messages.Message("HOST_HEAD_failed_close_listener"), err)
+			}
+			continue
+		}
+
+		client := Clients{}
+		client.RegisterConnectedClient(conn)
+
+		log.Println(messages.Message("HOST_HEAD_Connected_to"), conn.RemoteAddr())
+
+		//Manejador de conexion concurrente
+		go HandleConnection(client, conn)
+
 	}
 }
