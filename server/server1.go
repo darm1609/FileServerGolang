@@ -64,6 +64,8 @@ func (client *Clients) SetToInactiveClient() {
 	for index := range clientList {
 		if clientList[index].Client == client.Client {
 			clientList[index].Active = false
+			client.Client.Close()
+			return
 		}
 	}
 }
@@ -176,7 +178,7 @@ func (client *Clients) EstablishClientMode(mode string) bool {
 
 func (client *Clients) ValidIfSuscribe() bool {
 	for index := range clientList {
-		if len(clientList[index].Channel.Name) > 0 {
+		if client.Client == clientList[index].Client && len(clientList[index].Channel.Name) > 0 {
 			return true
 		}
 	}
@@ -304,7 +306,13 @@ func CreateSuscribeInitMessage() string {
 	return msj + ">"
 }
 
-func HandleConnection(client Clients, conn net.Conn) {
+func CreteBufferForMessageReceive(client Clients, maxSize int) ([]byte, int, error) {
+	data := make([]byte, maxSize)
+	n, err := client.Client.Read(data)
+	return data, n, err
+}
+
+func HandleConnection(client Clients) {
 	const sendMode = "S"
 	const receiveMode = "R"
 
@@ -318,19 +326,15 @@ func HandleConnection(client Clients, conn net.Conn) {
 	modes[receiveMode] = messages.Message("HOST_GENERAL_Receive")
 
 	err = client.SendInfoAndWelcomeMsjToClient()
-
 	if err != nil {
 		log.Println(messages.Message("HOST_CLIENT_Error_Writing"), err)
 		return
 	}
 
 	for {
-		data := make([]byte, maxSize)
-		n, err := client.Client.Read(data)
-
+		data, n, err := CreteBufferForMessageReceive(client, maxSize)
 		if err != nil {
 			client.SetToInactiveClient()
-			client.Client.Close()
 			continue
 		}
 
@@ -339,7 +343,6 @@ func HandleConnection(client Clients, conn net.Conn) {
 		if command == "q" {
 			client.SendMessageToClient(messages.Message("HOST_CLIENT_Goodbye"))
 			client.SetToInactiveClient()
-			client.Client.Close()
 			break
 		}
 
@@ -419,7 +422,7 @@ func main() {
 		log.Println(messages.Message("HOST_HEAD_Connected_to"), conn.RemoteAddr())
 
 		//Manejador de conexion concurrente
-		go HandleConnection(client, conn)
+		go HandleConnection(client)
 
 	}
 }
