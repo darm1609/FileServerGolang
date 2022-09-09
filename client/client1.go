@@ -57,10 +57,12 @@ func ExtratCommand(s string) (string, string, error) {
 			valid = false
 		}
 		if valid && len(strArray) > 1 {
-			return strArray[0], strArray[1], nil
+			strArray[0] = " "
+			filepath := strings.Join(strArray, " ")
+			return "send", filepath, nil
 		}
 		if valid && len(strArray) == 1 {
-			return strArray[0], "", errors.New(msjObj.Message("HOST_CLIENT_Missing_Parameters"))
+			return "send", "", errors.New(msjObj.Message("HOST_CLIENT_Missing_Parameters"))
 		}
 	}
 	return "", "", errors.New(msjObj.Message("HOST_CLIENT_Invalid_Syntax"))
