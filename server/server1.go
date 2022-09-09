@@ -314,8 +314,8 @@ func HandleConnection(client Clients, conn net.Conn) {
 	}
 
 	modes := make(map[string]string)
-	modes["S"] = messages.Message("HOST_GENERAL_Send")
-	modes["R"] = messages.Message("HOST_GENERAL_Receive")
+	modes[sendMode] = messages.Message("HOST_GENERAL_Send")
+	modes[receiveMode] = messages.Message("HOST_GENERAL_Receive")
 
 	err = client.SendInfoAndWelcomeMsjToClient()
 
