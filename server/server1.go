@@ -312,6 +312,11 @@ func CreteBufferForMessageReceive(client Clients, maxSize int) ([]byte, int, err
 	return data, n, err
 }
 
+func WaitAndAcceptConnect(listenerTcp net.Listener) (net.Conn, error) {
+	conn, err := listenerTcp.Accept()
+	return conn, err
+}
+
 func HandleConnection(client Clients) {
 	const sendMode = "S"
 	const receiveMode = "R"
@@ -392,7 +397,7 @@ func main() {
 	}
 
 	// Crear listener TCP
-	ln, err := net.Listen(network, addr)
+	listenerTcp, err := net.Listen(network, addr)
 	if err != nil {
 		log.Fatal(messages.Message("HOST_HEAD_failed_create_listener"), err)
 	}
@@ -406,8 +411,7 @@ func main() {
 
 	// connection-loop - handle incoming requests
 	for {
-		conn, err := ln.Accept()
-
+		conn, err := WaitAndAcceptConnect(listenerTcp)
 		if err != nil {
 			fmt.Println(err)
 			if err := conn.Close(); err != nil {
