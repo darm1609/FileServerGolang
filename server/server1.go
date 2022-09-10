@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -413,10 +412,7 @@ func main() {
 	for {
 		conn, err := WaitAndAcceptConnect(listenerTcp)
 		if err != nil {
-			fmt.Println(err)
-			if err := conn.Close(); err != nil {
-				log.Println(messages.Message("HOST_HEAD_failed_close_listener"), err)
-			}
+			log.Println(messages.Message("HOST_HEAD_failed_close_listener"), err)
 			continue
 		}
 
